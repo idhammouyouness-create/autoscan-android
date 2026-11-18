@@ -15,10 +15,6 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk {
-            // arm64-v8a: real phones (Galaxy S25 Ultra). x86_64: emulator used for automated tests.
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
     }
 
     // TEST signing key (committed on purpose, private repo): every build is signed with the same
@@ -35,10 +31,14 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("test")
+            // x86_64 only for the emulator used by the automated accuracy tests.
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         }
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("test")
+            // Real phones (Galaxy S25 Ultra) are arm64: smaller APK.
+            ndk { abiFilters += listOf("arm64-v8a") }
         }
     }
 
