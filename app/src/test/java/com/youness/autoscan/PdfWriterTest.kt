@@ -7,38 +7,27 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.awt.Color
-import java.awt.image.BufferedImage
 import java.io.File
 import java.util.Locale
-import javax.imageio.ImageIO
 
 class PdfWriterTest {
 
-    private fun makeJpeg(dir: File, name: String, w: Int, h: Int, label: String): File {
-        val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
-        val g = img.createGraphics()
-        g.color = Color.WHITE
-        g.fillRect(0, 0, w, h)
-        g.color = Color.BLACK
-        g.font = g.font.deriveFont(48f)
-        g.drawString(label, 40, 100)
-        g.drawRect(5, 5, w - 10, h - 10)
-        g.dispose()
-        val f = File(dir, name)
-        ImageIO.write(img, "jpg", f)
-        return f
+    /** Copies a test JPEG fixture (src/test/resources/jpeg) to [dir]. */
+    private fun fixture(dir: File, resource: String, name: String): File {
+        val bytes = javaClass.classLoader!!.getResourceAsStream("jpeg/$resource")!!.use { it.readBytes() }
+        return File(dir, name).apply { writeBytes(bytes) }
     }
 
     @Test
     fun jpegHeaderParsing() {
         val dir = createTempDir()
-        val f = makeJpeg(dir, "a.jpg", 321, 456, "x")
-        val info = JpegInfo.read(f.readBytes())
+        val info = JpegInfo.read(fixture(dir, "small.jpg", "a.jpg").readBytes())
         assertNotNull(info)
         assertEquals(321, info!!.width)
         assertEquals(456, info.height)
         assertEquals(3, info.components)
+        val gray = JpegInfo.read(fixture(dir, "page3.jpg", "g.jpg").readBytes())
+        assertEquals(1, gray!!.components)
         assertNull(JpegInfo.read(byteArrayOf(1, 2, 3, 4, 5)))
     }
 
@@ -46,9 +35,9 @@ class PdfWriterTest {
     fun writesValidPdfWithCorrectXref() {
         val dir = createTempDir()
         val pages = listOf(
-            makeJpeg(dir, "page_0001.jpg", 1240, 1754, "Page 1"),
-            makeJpeg(dir, "page_0002.jpg", 1754, 1240, "Page 2 landscape"),
-            makeJpeg(dir, "page_0003.jpg", 1000, 1500, "Page 3"),
+            fixture(dir, "page1.jpg", "page_0001.jpg"),
+            fixture(dir, "page2.jpg", "page_0002.jpg"),
+            fixture(dir, "page3.jpg", "page_0003.jpg"),
         )
         // Write the sample where CI uploads it, so it can be checked with an external PDF reader.
         val outDir = File("build/test-pdf").apply { mkdirs() }
@@ -83,7 +72,7 @@ class PdfWriterTest {
             Locale.setDefault(Locale.forLanguageTag("ar-MA-u-nu-arab"))
             val dir = createTempDir()
             val out = File(dir, "ar.pdf")
-            PdfWriter.write(listOf(makeJpeg(dir, "page_0001.jpg", 600, 800, "x")), out)
+            PdfWriter.write(listOf(fixture(dir, "small.jpg", "page_0001.jpg")), out)
             val text = String(out.readBytes(), Charsets.ISO_8859_1)
             assertTrue(text.contains("/MediaBox [0 0 595.28"))
         } finally {
