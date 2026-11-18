@@ -53,6 +53,8 @@ def side_quality(paper, q, n=48):
     cy = sum(p[1] for p in q) / 4
     d = max(3.0, min(w, h) / 120)
     r = max(3.0, min(w, h) * 0.015)
+    prec_tol = max(2.0, r / 3)
+    precs = []
     res = []
     for i in range(4):
         a, b = q[i], q[(i + 1) % 4]
@@ -65,7 +67,7 @@ def side_quality(paper, q, n=48):
         mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
         if (cx - mx) * nx + (cy - my) * ny < 0:
             nx, ny = -nx, -ny
-        good = vis = 0
+        good = vis = precise = 0
         for s in range(n):
             t = 0.04 + 0.92 * s / (n - 1)
             px, py = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
@@ -74,19 +76,26 @@ def side_quality(paper, q, n=48):
             vis += 1
             # tolerant search: strongest step within +-r of the expected edge position
             best = 0.0
+            best_o = 0.0
             o = -r
             while o <= r:
                 vin = bil(paper, px + nx * (o + d), py + ny * (o + d))
                 vout = bil(paper, px + nx * (o - d), py + ny * (o - d))
                 if vin is not None and vout is not None:
-                    best = max(best, abs(vin - vout))
+                    st = abs(vin - vout)
+                    if st > best:
+                        best, best_o = st, o
                 o += 1.0
             if best >= STEP_MIN:
                 good += 1
+                if abs(best_o) <= prec_tol:
+                    precise += 1
         if vis < n * 0.5:
             res.append("frame")  # mostly outside the image
         else:
             res.append(good / vis)
+            precs.append(precise / vis)
+    side_quality.last_precision = float(np.mean(precs)) if len(precs) == 4 else 0.0
     return res
 
 
@@ -188,9 +197,9 @@ def line_quads(edges, w, h, per_family=7):
                     pts = [intersect(hz[i], vt[k]), intersect(hz[i], vt[m]), intersect(hz[j], vt[k]), intersect(hz[j], vt[m])]
                     if any(p is None for p in pts):
                         continue
-                    if any(p[0] < -tol * w or p[0] > (1 + tol) * w or p[1] < -tol * h or p[1] > (1 + tol) * h for p in pts):
-                        continue
-                    out.append((clamp_quad(v1.order(pts), w, h), "line"))
+                    if any(p[0] < 0 or p[0] > w - 1 or p[1] < 0 or p[1] > h - 1 for p in pts):
+                        continue  # complete pages only: every corner inside the frame
+                    out.append((v1.order(pts), "line"))
     return out, L
 
 
@@ -235,8 +244,9 @@ def detect(gray, verbose=False):
         cv2.fillConvexPoly(mask, np.array([[round(x), round(y)] for x, y in q], np.int32), 255)
         inside = cv2.mean(paper, mask)[0]
         quality = float(np.mean(real)) if real else 0.0
-        score = 0.50 * min(ar / 0.7, 1.0) + 0.30 * quality + 0.20 * (1 - frame_sides / 2) + 0.002 * (inside - 128) / 1.27
-        cands.append(dict(q=q, tag=tag, area=ar, sides=sq, frame=frame_sides, score=score, inside=inside))
+        precision = side_quality.last_precision
+        score = 0.50 * min(ar / 0.7, 1.0) + 0.30 * quality + 0.20 * (1 - frame_sides / 2) + 0.002 * (inside - 128) / 1.27 + 0.25 * precision
+        cands.append(dict(q=q, tag=tag, area=ar, sides=sq, frame=frame_sides, score=score, inside=inside, precision=precision))
     cands.sort(key=lambda c: -c["score"])
     if verbose:
         print("  lines=%d raw=%d kept=%d" % (len(L), len(raw), len(cands)))

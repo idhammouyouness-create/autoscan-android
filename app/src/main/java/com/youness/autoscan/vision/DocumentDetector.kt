@@ -110,11 +110,13 @@ object DocumentDetector {
                 if (areaRatio < MIN_AREA_RATIO || !q.isConvex()) continue
                 if (q.interiorAnglesDeg().any { it < 55.0 || it > 125.0 }) continue
                 if (q.oppositeSideRatio() < 0.55) continue
-                val quality = sideQuality(paperBytes, w, h, q) ?: continue
+                val sides = sideQuality(paperBytes, w, h, q) ?: continue
+                val quality = sides.quality
                 val mean = quality.average()
                 if (quality.any { it < SIDE_GOOD_FRAC } || mean < MEAN_GOOD) continue
                 val inside = meanInside(paper, q)
-                var score = 0.50 * min(areaRatio / 0.7, 1.0) + 0.30 * mean + 0.20 + 0.002 * (inside - 128) / 1.27
+                var score = 0.50 * min(areaRatio / 0.7, 1.0) + 0.30 * mean + 0.20 +
+                    0.002 * (inside - 128) / 1.27 + 0.25 * sides.precision
                 if (previous != null && previous.maxCornerDistance(q) < min(w, h) * 0.03) score += 0.04
                 out.add(Candidate(q, score, mean, areaRatio))
             }
@@ -240,7 +242,6 @@ object DocumentDetector {
         }
         val hz = merged.filter { abs(it.ny) > abs(it.nx) }.sortedByDescending { it.len }.take(LINES_PER_FAMILY)
         val vt = merged.filter { abs(it.nx) >= abs(it.ny) }.sortedByDescending { it.len }.take(LINES_PER_FAMILY)
-        val tol = 0.03
         for (i in hz.indices) for (j in i + 1 until hz.size) for (a in vt.indices) for (b in a + 1 until vt.size) {
             val p = listOf(
                 intersect(hz[i], vt[a]), intersect(hz[i], vt[b]),
@@ -248,9 +249,9 @@ object DocumentDetector {
             )
             if (p.any { it == null }) continue
             val pts = p.map { it!! }
-            if (pts.any { it.x < -tol * w || it.x > (1 + tol) * w || it.y < -tol * h || it.y > (1 + tol) * h }) continue
-            val clamped = pts.map { Pt(it.x.coerceIn(0.0, w - 1.0), it.y.coerceIn(0.0, h - 1.0)) }
-            out.add(Quad.fromUnordered(clamped))
+            // Complete pages only: every corner must be inside the frame.
+            if (pts.any { it.x < 0 || it.x > w - 1.0 || it.y < 0 || it.y > h - 1.0 }) continue
+            out.add(Quad.fromUnordered(pts))
         }
     }
 
@@ -266,17 +267,26 @@ object DocumentDetector {
             (a.x >= w - 1 - t && b.x >= w - 1 - t) || (a.y >= h - 1 - t && b.y >= h - 1 - t)
     }
 
+    class SideResult(
+        /** Per side: fraction of samples with a paper/background step near the side. */
+        val quality: DoubleArray,
+        /** Fraction of those steps lying exactly on the side (not a few pixels away). */
+        val precision: Double,
+    )
+
     /**
-     * For each side, the fraction of sample points where a paper/background step exists near the
-     * side. Returns null as soon as a side lies on the frame border or fails (early exit = fast).
+     * Checks each side for a real paper edge. Returns null as soon as a side lies on the frame
+     * border or fails (early exit keeps it fast).
      */
-    fun sideQuality(paper: ByteArray, w: Int, h: Int, q: Quad): DoubleArray? {
+    fun sideQuality(paper: ByteArray, w: Int, h: Int, q: Quad): SideResult? {
         val pts = q.points
         val cx = pts.sumOf { it.x } / 4
         val cy = pts.sumOf { it.y } / 4
         val d = max(3.0, min(w, h) / 120.0)
         val r = max(3.0, min(w, h) * 0.015)
+        val precTol = max(2.0, r / 3)
         val res = DoubleArray(4)
+        var precisionSum = 0.0
         for (i in 0 until 4) {
             val a = pts[i]
             val b = pts[(i + 1) % 4]
@@ -292,6 +302,7 @@ object DocumentDetector {
             if ((cx - mx) * nx + (cy - my) * ny < 0) { nx = -nx; ny = -ny }
             var good = 0
             var vis = 0
+            var precise = 0
             for (s in 0 until SAMPLES) {
                 val t = 0.04 + 0.92 * s / (SAMPLES - 1)
                 val px = a.x + (b.x - a.x) * t
@@ -299,25 +310,29 @@ object DocumentDetector {
                 if (bil(paper, w, h, px, py) < 0) continue
                 vis++
                 var best = 0.0
+                var bestO = 0.0
                 var o = -r
                 while (o <= r) {
                     val vin = bil(paper, w, h, px + nx * (o + d), py + ny * (o + d))
                     val vout = bil(paper, w, h, px + nx * (o - d), py + ny * (o - d))
                     if (vin >= 0 && vout >= 0) {
                         val st = abs(vin - vout)
-                        if (st > best) best = st
-                        if (best >= STEP_MIN) break
+                        if (st > best) { best = st; bestO = o }
                     }
                     o += 1.0
                 }
-                if (best >= STEP_MIN) good++
+                if (best >= STEP_MIN) {
+                    good++
+                    if (abs(bestO) <= precTol) precise++
+                }
             }
             if (vis < SAMPLES / 2) return null
             val frac = good.toDouble() / vis
             if (frac < SIDE_GOOD_FRAC) return null
             res[i] = frac
+            precisionSum += precise.toDouble() / vis
         }
-        return res
+        return SideResult(res, precisionSum / 4)
     }
 
     /** Bilinear sample; -1 outside the image. */
