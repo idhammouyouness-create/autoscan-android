@@ -21,11 +21,24 @@ android {
         }
     }
 
+    // TEST signing key (committed on purpose, private repo): every build is signed with the same
+    // key, so a new version installs over the previous one. Not for publishing on a store.
+    signingConfigs {
+        create("test") {
+            storeFile = file("test-signing.jks")
+            storePassword = "autoscan-test"
+            keyAlias = "autoscan"
+            keyPassword = "autoscan-test"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("test")
+        }
         release {
             isMinifyEnabled = false
-            // Test signing key only. Not for publishing on a store.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("test")
         }
     }
 

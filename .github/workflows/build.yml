@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,39 +26,55 @@ jobs:
       - name: Unit tests
         run: gradle --no-daemon --stacktrace testDebugUnitTest
 
-      - name: Build APK
-        run: gradle --no-daemon --stacktrace assembleDebug
-
-      - name: Generate Gradle wrapper (for Android Studio)
+      - name: Test summary
         if: always()
-        run: gradle --no-daemon wrapper --gradle-version 8.11.1
+        run: |
+          for f in app/build/test-results/testDebugUnitTest/*.xml; do
+            grep -o '<testsuite name="[^"]*" tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*" errors="[0-9]*"' "$f"
+          done
 
-      - name: Upload APK
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk
-          path: app/build/outputs/apk/debug/*.apk
+      - name: Verify generated PDF with independent tools
+        run: |
+          sudo apt-get install -y -qq qpdf poppler-utils > /dev/null
+          pip install -q pypdf
+          qpdf --check app/build/test-pdf/sample.pdf
+          python3 -c "
+          import pypdf
+          r = pypdf.PdfReader('app/build/test-pdf/sample.pdf', strict=True)
+          print('pypdf pages:', len(r.pages))
+          for i, p in enumerate(r.pages):
+              print(' page', i + 1, 'size pt:', [round(float(v), 1) for v in p.mediabox[2:]])
+          assert len(r.pages) == 3
+          "
+          pdftoppm -r 20 -png app/build/test-pdf/sample.pdf /tmp/render
+          ls -la /tmp/render*
 
-      - name: Upload test results and sample PDF
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: unit-test-results
-          path: |
-            app/build/reports/tests/
-            app/build/test-results/
-            app/build/test-pdf/
+      - name: Build APK (release, test-signed)
+        run: gradle --no-daemon --stacktrace assembleRelease
 
-      - name: Upload wrapper
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gradle-wrapper
-          path: |
-            gradlew
-            gradlew.bat
-            gradle/wrapper/
+      - name: Publish APK as a GitHub release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          ls -la "$APK"
+          cp "$APK" AutoScan-v1.0.${{ github.run_number }}.apk
+          gh release create "v1.0.${{ github.run_number }}" AutoScan-v1.0.${{ github.run_number }}.apk \
+            --title "AutoScan 1.0.${{ github.run_number }}" \
+            --notes "Build ${{ github.sha }}. Test-signed APK: install on the phone directly."
+
+      - name: Add Gradle wrapper to the repository (for Android Studio)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          if [ ! -f gradlew ]; then
+            gradle --no-daemon wrapper --gradle-version 8.11.1
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git add gradlew gradlew.bat gradle/wrapper
+            git commit -m "Add Gradle wrapper [skip ci]"
+            git push
+          fi
 
   device-tests:
     needs: build
@@ -88,13 +107,3 @@ jobs:
           ram-size: 4096M
           disable-animations: true
           script: gradle --no-daemon connectedDebugAndroidTest || touch failed.flag; adb logcat -d -s AccuracyTest:I > accuracy.txt; cat accuracy.txt; test ! -f failed.flag
-
-      - name: Upload device test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: device-test-results
-          path: |
-            accuracy.txt
-            app/build/reports/androidTests/
-            app/build/outputs/androidTest-results/
