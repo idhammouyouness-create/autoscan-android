@@ -135,6 +135,16 @@ class DetectorAccuracyTest {
         return img
     }
 
+    /** Writes an image into logcat as base64 PNG chunks (tag ImgDump) so CI logs can be inspected. */
+    private fun dump(name: String, img: Mat) {
+        val buf = org.opencv.core.MatOfByte()
+        org.opencv.imgcodecs.Imgcodecs.imencode(".png", img, buf)
+        val b64 = android.util.Base64.encodeToString(buf.toArray(), android.util.Base64.NO_WRAP)
+        buf.release()
+        b64.chunked(3000).forEachIndexed { i, c -> Log.i("ImgDump", "$name|$i|$c") }
+        Log.i("ImgDump", "$name|END")
+    }
+
     private fun Pt.lerp(o: Pt, t: Double) = Pt(x + (o.x - x) * t, y + (o.y - y) * t)
 
     private val scenes = listOf(
@@ -158,8 +168,9 @@ class DetectorAccuracyTest {
         for (s in scenes) {
             val img = render(s, w, h)
             val c = DocumentDetector.detect(img)
-            img.release()
             val err = c?.let { cornerError(it.quad.scale(1.0 / w, 1.0 / h), s.corners) }
+            if (err == null || err > 0.03) dump("preview_${s.name}", img)
+            img.release()
             Log.i("AccuracyTest", "preview ${s.name}: err=${err?.let { "%.4f".format(it) } ?: "NOT FOUND"} support=${c?.edgeSupport} got=${c?.quad} truth=${s.corners.scale(w.toDouble(), h.toDouble())}")
             if (err == null || err > 0.03) failures += "${s.name}: ${err ?: "not found"}"
         }
@@ -227,6 +238,7 @@ class DetectorAccuracyTest {
         val fa = DocumentDetector.fingerprint(a, DocumentDetector.detect(a)!!.quad)
         val fb = DocumentDetector.fingerprint(aShifted, DocumentDetector.detect(aShifted)!!.quad)
         val fc = DocumentDetector.fingerprint(other, DocumentDetector.detect(other)!!.quad)
+        dump("fp_a", a); dump("fp_shifted", aShifted)
         val same = DocumentDetector.similarity(fa, fb)
         val diff = DocumentDetector.similarity(fa, fc)
         Log.i("AccuracyTest", "similarity same=$same different=$diff quads a=${DocumentDetector.detect(a)?.quad} shifted=${DocumentDetector.detect(aShifted)?.quad}")

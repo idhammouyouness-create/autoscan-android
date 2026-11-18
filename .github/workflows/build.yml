@@ -106,4 +106,4 @@ jobs:
           target: google_apis
           ram-size: 4096M
           disable-animations: true
-          script: gradle --no-daemon connectedDebugAndroidTest || touch failed.flag; adb logcat -d -s AccuracyTest:I > accuracy.txt; cat accuracy.txt; test ! -f failed.flag
+          script: gradle --no-daemon connectedDebugAndroidTest || touch failed.flag; adb logcat -d -s AccuracyTest:I > accuracy.txt; cat accuracy.txt; adb logcat -d -s ImgDump:I | grep -o "ImgDump: .*"; test ! -f failed.flag
