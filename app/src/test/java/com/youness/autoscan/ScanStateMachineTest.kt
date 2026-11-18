@@ -226,6 +226,17 @@ class ScanStateMachineTest {
     }
 
     @Test
+    fun pageRunsOffFrame_asksToMoveBack_neverCaptures() {
+        val sm = ScanStateMachine(target = 2, countdownMs = 3000)
+        repeat(50) {
+            t += 60
+            assertTrue(sm.onFrame(Observation(t, false, false, false, true, null, tooClose = true)).isEmpty())
+        }
+        assertEquals(Phase.SEARCHING, sm.state.phase)
+        assertEquals(Hint.MOVE_BACK, sm.state.hint)
+    }
+
+    @Test
     fun manualCapture_works() {
         val sm = ScanStateMachine(target = 2, countdownMs = 3000)
         assertEquals(listOf(Effect.Capture), sm.manualCapture())

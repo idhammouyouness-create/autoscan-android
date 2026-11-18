@@ -204,9 +204,10 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         if (settings.showDebug) {
             debugText = String.format(
                 Locale.ROOT,
-                "sharp %.0f / peak %.0f  motion %.1f  edges %.2f  sim %s  %dx%d",
+                "sharp %.0f / peak %.0f  motion %.1f  edges %.2f  sim %s  close %s  %dx%d",
                 r.sharpness, r.peakSharpness, r.motion, r.edgeSupport,
                 r.similarityToLast?.let { String.format(Locale.ROOT, "%.2f", it) } ?: "-",
+                if (r.tooClose) "Y" else "N",
                 r.frameWidth, r.frameHeight,
             )
         }
@@ -218,6 +219,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                 sharp = r.sharp,
                 motionLow = r.motionLow,
                 similarityToLast = r.similarityToLast,
+                tooClose = r.tooClose,
             ),
         )
         publish()

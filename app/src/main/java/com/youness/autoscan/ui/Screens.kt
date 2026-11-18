@@ -198,7 +198,7 @@ private fun SetupScreen(vm: ScanViewModel) {
         ) { Text("بدء المسح التلقائي", fontSize = 19.sp) }
 
         Text(
-            "نصيحة: ضع الأوراق على سطح داكن وفي إضاءة جيدة، وأمسك الهاتف فوقها مباشرة.",
+            "نصيحة: يجب أن تظهر الصفحة كاملة بحوافها الأربعة داخل الإطار. السطح الداكن والإضاءة الجيدة يحسّنان الكشف.",
             color = Color.Gray, fontSize = 14.sp,
         )
     }
@@ -299,6 +299,7 @@ private fun statusOf(m: MachineState): Pair<String, Color> {
     return when (m.phase) {
         Phase.SEARCHING -> when (m.hint) {
             Hint.SAME_PAGE -> "هذه الصفحة السابقة — ضع صفحة جديدة" to amber
+            Hint.MOVE_BACK -> "الصفحة خارج الإطار — ابتعد قليلاً" to amber
             else -> "البحث عن ورقة…" to grey
         }
         Phase.COUNTDOWN -> "ورقة مكتشفة — الالتقاط بعد ${(m.countdownLeftMs + 999) / 1000}" to amber
@@ -307,6 +308,7 @@ private fun statusOf(m: MachineState): Pair<String, Color> {
             Hint.NOT_SHARP -> "التحقق من الوضوح… الصورة غير واضحة" to amber
             Hint.CAPTURE_BLURRY -> "الصورة الملتقطة غير واضحة — إعادة المحاولة" to red
             Hint.CAPTURE_FAILED -> "فشل الالتقاط — إعادة المحاولة" to red
+            Hint.MOVE_BACK -> "الصفحة خارج الإطار — ابتعد قليلاً" to amber
             else -> "ورقة مكتشفة — التحقق من الوضوح" to amber
         }
         Phase.READY -> "جاهز" to green

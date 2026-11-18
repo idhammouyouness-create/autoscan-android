@@ -6,9 +6,9 @@ package com.youness.autoscan.vision
  */
 class QuadTracker(
     /** Max corner movement (fraction of frame) between frames still considered "not moving". */
-    private val stillThreshold: Double = 0.012,
+    private val stillThreshold: Double = 0.015,
     /** Consecutive still frames required before the outline is considered stable. */
-    private val framesForStable: Int = 6,
+    private val framesForStable: Int = 5,
     /** Frames a detection may be missing before the document is considered gone. */
     private val maxMissingFrames: Int = 3,
     /** Exponential smoothing factor for the displayed outline. */

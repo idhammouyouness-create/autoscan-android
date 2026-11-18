@@ -22,6 +22,8 @@ data class FrameResult(
     val motionLow: Boolean,
     val similarityToLast: Double?,
     val edgeSupport: Double,
+    /** Paper runs off the frame (no complete page): user should move the phone back. */
+    val tooClose: Boolean,
     val frameWidth: Int,
     val frameHeight: Int,
 )
@@ -42,7 +44,7 @@ class FrameAnalyzer(
         /** Frame must reach this fraction of the recent best sharpness. */
         const val RELATIVE_SHARPNESS = 0.65
         /** Mean absolute pixel change between frames (0..255) below which the scene is still. */
-        const val MOTION_LOW = 2.5
+        const val MOTION_LOW = 3.5
         private const val MIN_FRAME_INTERVAL_MS = 55L // ~18 fps max: saves battery
     }
 
@@ -116,7 +118,9 @@ class FrameAnalyzer(
         prevThumb?.release()
         prevThumb = thumb
 
-        val best = DocumentDetector.detect(gray)
+        val previousPixel = tracker.smoothed?.scale(w.toDouble(), h.toDouble())
+        val detection = DocumentDetector.analyze(gray, previousPixel)
+        val best = detection.best
         val rawNorm = best?.quad?.scale(1.0 / w, 1.0 / h)
         val smoothed = tracker.update(rawNorm)
         val pixelQuad = smoothed?.scale(w.toDouble(), h.toDouble())
@@ -153,6 +157,7 @@ class FrameAnalyzer(
                 motionLow = motion < MOTION_LOW,
                 similarityToLast = similarity,
                 edgeSupport = best?.edgeSupport ?: 0.0,
+                tooClose = detection.tooClose,
                 frameWidth = w,
                 frameHeight = h,
             ),

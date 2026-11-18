@@ -28,6 +28,7 @@ enum class Hint {
     HOLD_STILL,
     NOT_SHARP,
     SAME_PAGE,
+    MOVE_BACK,
     REMOVE_PAGE,
     CAPTURE_BLURRY,
     CAPTURE_FAILED,
@@ -52,6 +53,8 @@ data class Observation(
     val motionLow: Boolean,
     /** Similarity (-1..1) between the visible sheet and the last saved page; null if unknown. */
     val similarityToLast: Double?,
+    /** The page runs off the frame: ask the user to move back. */
+    val tooClose: Boolean = false,
 )
 
 data class MachineState(
@@ -120,7 +123,7 @@ class ScanStateMachine(
                         startCountdown(o.timeMs)
                     }
                 } else {
-                    set(s.copy(hint = Hint.NONE))
+                    set(s.copy(hint = if (o.tooClose) Hint.MOVE_BACK else Hint.NONE))
                 }
             }
 
@@ -147,6 +150,7 @@ class ScanStateMachine(
                 } else {
                     val keepCaptureHint = s.hint == Hint.CAPTURE_BLURRY || s.hint == Hint.CAPTURE_FAILED
                     val hint = when {
+                        !o.hasDoc && o.tooClose -> Hint.MOVE_BACK
                         !o.hasDoc -> s.hint
                         !o.motionLow || !o.docStable -> Hint.HOLD_STILL
                         !o.sharp -> Hint.NOT_SHARP
