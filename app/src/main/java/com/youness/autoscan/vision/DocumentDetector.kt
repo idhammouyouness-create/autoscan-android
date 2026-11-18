@@ -116,7 +116,8 @@ object DocumentDetector {
                 if (quality.any { it < SIDE_GOOD_FRAC } || mean < MEAN_GOOD) continue
                 val inside = meanInside(paper, q)
                 var score = 0.50 * min(areaRatio / 0.7, 1.0) + 0.30 * mean + 0.20 +
-                    0.002 * (inside - 128) / 1.27 + 0.25 * sides.precision
+                    0.002 * (inside - 128) / 1.27 + 0.25 * sides.precision +
+                    0.30 * min(sides.strength / 60.0, 1.0)
                 if (previous != null && previous.maxCornerDistance(q) < min(w, h) * 0.03) score += 0.04
                 out.add(Candidate(q, score, mean, areaRatio))
             }
@@ -272,6 +273,8 @@ object DocumentDetector {
         val quality: DoubleArray,
         /** Fraction of those steps lying exactly on the side (not a few pixels away). */
         val precision: Double,
+        /** Median edge step of the weakest side (paper vs. background is strong; wood grain is weak). */
+        val strength: Double,
     )
 
     /**
@@ -287,6 +290,8 @@ object DocumentDetector {
         val precTol = max(2.0, r / 3)
         val res = DoubleArray(4)
         var precisionSum = 0.0
+        var minMedian = Double.MAX_VALUE
+        val steps = DoubleArray(SAMPLES)
         for (i in 0 until 4) {
             val a = pts[i]
             val b = pts[(i + 1) % 4]
@@ -321,6 +326,7 @@ object DocumentDetector {
                     }
                     o += 1.0
                 }
+                steps[vis - 1] = best
                 if (best >= STEP_MIN) {
                     good++
                     if (abs(bestO) <= precTol) precise++
@@ -331,8 +337,16 @@ object DocumentDetector {
             if (frac < SIDE_GOOD_FRAC) return null
             res[i] = frac
             precisionSum += precise.toDouble() / vis
+            minMedian = min(minMedian, median(steps, vis))
         }
-        return SideResult(res, precisionSum / 4)
+        return SideResult(res, precisionSum / 4, minMedian)
+    }
+
+    /** Median of the first [n] values (same convention as numpy: mean of the two middle values). */
+    private fun median(a: DoubleArray, n: Int): Double {
+        val s = a.copyOf(n)
+        s.sort()
+        return if (n % 2 == 1) s[n / 2] else (s[n / 2 - 1] + s[n / 2]) / 2
     }
 
     /** Bilinear sample; -1 outside the image. */

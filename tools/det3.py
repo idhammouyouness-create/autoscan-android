@@ -55,6 +55,7 @@ def side_quality(paper, q, n=48):
     r = max(3.0, min(w, h) * 0.015)
     prec_tol = max(2.0, r / 3)
     precs = []
+    meds = []
     res = []
     for i in range(4):
         a, b = q[i], q[(i + 1) % 4]
@@ -68,6 +69,7 @@ def side_quality(paper, q, n=48):
         if (cx - mx) * nx + (cy - my) * ny < 0:
             nx, ny = -nx, -ny
         good = vis = precise = 0
+        steps = []
         for s in range(n):
             t = 0.04 + 0.92 * s / (n - 1)
             px, py = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
@@ -86,6 +88,7 @@ def side_quality(paper, q, n=48):
                     if st > best:
                         best, best_o = st, o
                 o += 1.0
+            steps.append(best)
             if best >= STEP_MIN:
                 good += 1
                 if abs(best_o) <= prec_tol:
@@ -95,7 +98,9 @@ def side_quality(paper, q, n=48):
         else:
             res.append(good / vis)
             precs.append(precise / vis)
+            meds.append(float(np.median(steps)))
     side_quality.last_precision = float(np.mean(precs)) if len(precs) == 4 else 0.0
+    side_quality.last_strength = min(meds) if len(meds) == 4 else 0.0
     return res
 
 
@@ -245,7 +250,8 @@ def detect(gray, verbose=False):
         inside = cv2.mean(paper, mask)[0]
         quality = float(np.mean(real)) if real else 0.0
         precision = side_quality.last_precision
-        score = 0.50 * min(ar / 0.7, 1.0) + 0.30 * quality + 0.20 * (1 - frame_sides / 2) + 0.002 * (inside - 128) / 1.27 + 0.25 * precision
+        strength = side_quality.last_strength
+        score = 0.50 * min(ar / 0.7, 1.0) + 0.30 * quality + 0.20 * (1 - frame_sides / 2) + 0.002 * (inside - 128) / 1.27 + 0.25 * precision + 0.30 * min(strength / 60.0, 1.0)
         cands.append(dict(q=q, tag=tag, area=ar, sides=sq, frame=frame_sides, score=score, inside=inside, precision=precision))
     cands.sort(key=lambda c: -c["score"])
     if verbose:
