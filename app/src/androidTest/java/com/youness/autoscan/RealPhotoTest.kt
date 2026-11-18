@@ -68,7 +68,7 @@ class RealPhotoTest {
                     val expected = Quad(pts[0], pts[1], pts[2], pts[3])
                     val got = det.best?.quad?.scale(1.0 / w, 1.0 / h)
                     val err = got?.maxCornerDistance(expected)
-                    Log.i("AccuracyTest", "page $file: err=${err?.let { "%.4f".format(it) } ?: "NOT FOUND"} ${"%.0f".format(ms)}ms")
+                    Log.i("AccuracyTest", "page $file: err=${err?.let { "%.4f".format(it) } ?: "NOT FOUND"} ${"%.0f".format(ms)}ms got=$got expected=$expected n=${det.candidates.size}")
                     if (err == null || err > 0.025) failures += "$file: ${err ?: "not found"}"
                 }
             }

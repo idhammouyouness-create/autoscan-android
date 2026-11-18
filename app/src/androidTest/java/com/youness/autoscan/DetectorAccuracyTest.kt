@@ -160,7 +160,7 @@ class DetectorAccuracyTest {
             val c = DocumentDetector.detect(img)
             img.release()
             val err = c?.let { cornerError(it.quad.scale(1.0 / w, 1.0 / h), s.corners) }
-            Log.i("AccuracyTest", "preview ${s.name}: err=${err?.let { "%.4f".format(it) } ?: "NOT FOUND"} support=${c?.edgeSupport}")
+            Log.i("AccuracyTest", "preview ${s.name}: err=${err?.let { "%.4f".format(it) } ?: "NOT FOUND"} support=${c?.edgeSupport} got=${c?.quad} truth=${s.corners.scale(w.toDouble(), h.toDouble())}")
             if (err == null || err > 0.03) failures += "${s.name}: ${err ?: "not found"}"
         }
         assertTrue("Detection failures: $failures", failures.isEmpty())
@@ -229,7 +229,7 @@ class DetectorAccuracyTest {
         val fc = DocumentDetector.fingerprint(other, DocumentDetector.detect(other)!!.quad)
         val same = DocumentDetector.similarity(fa, fb)
         val diff = DocumentDetector.similarity(fa, fc)
-        Log.i("AccuracyTest", "similarity same=$same different=$diff")
+        Log.i("AccuracyTest", "similarity same=$same different=$diff quads a=${DocumentDetector.detect(a)?.quad} shifted=${DocumentDetector.detect(aShifted)?.quad}")
         a.release(); aShifted.release(); other.release()
         assertTrue("same page similarity too low: $same", same > 0.9)
         assertTrue("different page similarity too high: $diff", diff < same)

@@ -113,7 +113,8 @@ object DocumentDetector {
                 val quality = sideQuality(paperBytes, w, h, q) ?: continue
                 val mean = quality.average()
                 if (quality.any { it < SIDE_GOOD_FRAC } || mean < MEAN_GOOD) continue
-                var score = 0.50 * min(areaRatio / 0.7, 1.0) + 0.30 * mean + 0.20
+                val inside = meanInside(paper, q)
+                var score = 0.50 * min(areaRatio / 0.7, 1.0) + 0.30 * mean + 0.20 + 0.002 * (inside - 128) / 1.27
                 if (previous != null && previous.maxCornerDistance(q) < min(w, h) * 0.03) score += 0.04
                 out.add(Candidate(q, score, mean, areaRatio))
             }
@@ -122,6 +123,17 @@ object DocumentDetector {
         } finally {
             mats.forEach { it.release() }
         }
+    }
+
+    /** Mean paper-map brightness inside the outline (a real page is bright inside). */
+    private fun meanInside(paper: Mat, q: Quad): Double {
+        val mask = Mat.zeros(paper.rows(), paper.cols(), CvType.CV_8UC1)
+        val poly = MatOfPoint(*q.points.map { Point(Math.round(it.x).toDouble(), Math.round(it.y).toDouble()) }.toTypedArray())
+        Imgproc.fillConvexPoly(mask, poly, org.opencv.core.Scalar(255.0))
+        val v = Core.mean(paper, mask).`val`[0]
+        poly.release()
+        mask.release()
+        return v
     }
 
     private fun toBytes(m: Mat): ByteArray {
@@ -206,7 +218,7 @@ object DocumentDetector {
     private fun lineQuads(edges: Mat, w: Int, h: Int, out: MutableList<Quad>) {
         val segs = Mat()
         val minDim = min(w, h).toDouble()
-        Imgproc.HoughLinesP(edges, segs, 1.0, Math.PI / 360, 30, minDim * 0.18, minDim * 0.06)
+        Imgproc.HoughLinesP(edges, segs, 1.0, Math.PI / 360, 30, (minDim * 0.18).toInt().toDouble(), (minDim * 0.06).toInt().toDouble())
         val lines = ArrayList<Line>()
         for (i in 0 until segs.rows()) {
             val s = segs.get(i, 0) ?: continue
